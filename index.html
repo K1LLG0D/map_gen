@@ -17,39 +17,52 @@
       max-width: 90%;
       font-size: 12px;
     }
-    #search-box {
+    #search-container {
       position: absolute;
       bottom: 10px;
-      left: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
       background: white;
-      z-index: 1001;
       padding: 8px;
-      display: flex;
-      gap: 5px;
+      width: 300px;
+      border-radius: 6px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
     }
-    #address-input {
-      padding: 4px;
-      width: 220px;
-      font-size: 12px;
+    #search-input {
+      width: 100%;
+      padding: 5px;
+      font-size: 14px;
     }
-    #search-btn {
-      padding: 4px 10px;
+    #suggestions {
+      background: white;
+      border-top: 1px solid #ccc;
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    .suggestion {
+      padding: 6px;
+      cursor: pointer;
+    }
+    .suggestion:hover {
+      background: #f0f0f0;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <div id="url">Haz clic en dos puntos para generar la ruta...</div>
-  <div id="search-box">
-    <input id="address-input" type="text" placeholder="Buscar dirección..." />
-    <button id="search-btn">Buscar</button>
+  <div id="search-container">
+    <input type="text" id="search-input" placeholder="Buscar dirección en Lima, Perú..." />
+    <div id="suggestions"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
 
   <script>
-    const map = L.map("map").setView([-12.1, -77.03], 13);
+    const map = L.map("map").setView([-12.05, -77.05], 13);
     L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
@@ -113,34 +126,42 @@
       }
 
       const marker = L.marker(e.latlng, { draggable: true }).addTo(map).bindPopup(
-        `Lat: ${e.latlng.lat.toFixed(5)}<br>Lng: ${e.latlng.lng.toFixed(5)}`
+        `Lat: ${e.latlng.lat.toFixed(4)}<br>Lng: ${e.latlng.lng.toFixed(4)}`
       ).openPopup();
 
       waypoints.push(marker.getLatLng());
       updateRoute();
-
-      marker.on("dragend", function () {
-        const index = waypoints.findIndex(w => w === marker.getLatLng());
-        waypoints[index] = marker.getLatLng();
-        updateRoute();
-      });
     });
 
-    document.getElementById("search-btn").addEventListener("click", () => {
-      const address = document.getElementById("address-input").value;
-      if (!address) return;
+    // Buscador con Photon (solo Lima, Perú)
+    const searchInput = document.getElementById('search-input');
+    const suggestionsDiv = document.getElementById('suggestions');
 
-      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
-        .then(res => res.json())
+    searchInput.addEventListener('input', function () {
+      const query = searchInput.value.trim();
+      if (query.length < 3) {
+        suggestionsDiv.innerHTML = "";
+        return;
+      }
+
+      fetch(`https://photon.komoot.io/api/?q=${query}&limit=5&lang=es&lat=-12.05&lon=-77.05`)
+        .then(response => response.json())
         .then(data => {
-          if (data.length > 0) {
-            const { lat, lon } = data[0];
-            const coords = L.latLng(lat, lon);
-            map.setView(coords, 16);
-            const marker = L.marker(coords).addTo(map).bindPopup(`📍 ${address}`).openPopup();
-          } else {
-            alert("Dirección no encontrada");
-          }
+          suggestionsDiv.innerHTML = "";
+          data.features.forEach(place => {
+            const suggestion = document.createElement("div");
+            suggestion.className = "suggestion";
+            suggestion.textContent = place.properties.name + ", " + (place.properties.city || "") + ", " + (place.properties.country || "");
+            suggestion.addEventListener("click", () => {
+              const coords = place.geometry.coordinates;
+              const latlng = L.latLng(coords[1], coords[0]);
+              map.setView(latlng, 17);
+              const marker = L.marker(latlng).addTo(map).bindPopup("Ubicación seleccionada").openPopup();
+              suggestionsDiv.innerHTML = "";
+              searchInput.value = "";
+            });
+            suggestionsDiv.appendChild(suggestion);
+          });
         });
     });
   </script>
