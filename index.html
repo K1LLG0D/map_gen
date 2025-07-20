@@ -2,10 +2,9 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Mapa tipo Google con rutas (Yandex URL)</title>
+  <title>Mapa interactivo con rutas (Yandex URL)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
   <style>
     #map { height: 100vh; width: 100%; }
     #url {
@@ -15,66 +14,63 @@
       background: white;
       padding: 10px;
       z-index: 1000;
-      max-width: 95%;
+      max-width: 90%;
       font-size: 12px;
-      word-break: break-all;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      border-radius: 4px;
+    }
+    #search-box {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: white;
+      z-index: 1001;
+      padding: 8px;
+      display: flex;
+      gap: 5px;
+    }
+    #address-input {
+      padding: 4px;
+      width: 220px;
+      font-size: 12px;
+    }
+    #search-btn {
+      padding: 4px 10px;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div id="url">Haz clic en dos puntos o busca una dirección para generar la ruta...</div>
+  <div id="url">Haz clic en dos puntos para generar la ruta...</div>
+  <div id="search-box">
+    <input id="address-input" type="text" placeholder="Buscar dirección..." />
+    <button id="search-btn">Buscar</button>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
   <script>
     const map = L.map("map").setView([-12.1, -77.03], 13);
-
-    // Estilo tipo Google Maps claro (CartoDB Positron)
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      attribution: '© OpenStreetMap contributors & CartoDB',
-      subdomains: 'abcd',
-      maxZoom: 20
+    L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+      attribution: '© OpenStreetMap contributors'
     }).addTo(map);
-
-    // Buscador
-    L.Control.geocoder({
-      defaultMarkGeocode: false,
-      placeholder: 'Buscar dirección...',
-      errorMessage: 'No se encontró el lugar',
-    })
-    .on('markgeocode', function(e) {
-      const center = e.geocode.center;
-      const marker = L.marker(center, { draggable: true }).addTo(map);
-      marker.bindPopup(`Lat: ${center.lat.toFixed(4)}, Lng: ${center.lng.toFixed(4)}`).openPopup();
-      waypoints.push(center);
-      updateRoute();
-    })
-    .addTo(map);
 
     let waypoints = [];
     let control = null;
 
     function buildYandexURL(coords, ptStart, ptEnd) {
-      const format = n => n.toFixed(4);
-      const plCoords = coords.map(c => `${format(c[0])},${format(c[1])}`).join(",");
+      const plCoords = coords.map(c => `${c[0].toFixed(4)},${c[1].toFixed(4)}`).join(",");
       const pl = `pl=c:3C3C3CFF,w:5,${plCoords}`;
-      const pt = `pt=${format(ptStart[0])},${format(ptStart[1])},comma_solid_red~${format(ptEnd[0])},${format(ptEnd[1])},comma_solid_blue`;
+      const pt = `pt=${ptStart[0].toFixed(4)},${ptStart[1].toFixed(4)},comma_solid_red~${ptEnd[0].toFixed(4)},${ptEnd[1].toFixed(4)},comma_solid_blue`;
 
       const lons = coords.map(c => c[0]);
       const lats = coords.map(c => c[1]);
-      const minLon = Math.min(...lons);
-      const maxLon = Math.max(...lons);
-      const minLat = Math.min(...lats);
-      const maxLat = Math.max(...lats);
-      const bbox = `bbox=${format(minLon)},${format(minLat)}~${format(maxLon)},${format(maxLat)}`;
-      const ll = `ll=${format((minLon + maxLon) / 2)},${format((minLat + maxLat) / 2)}`;
+      const minLon = Math.min(...lons).toFixed(4);
+      const maxLon = Math.max(...lons).toFixed(4);
+      const minLat = Math.min(...lats).toFixed(4);
+      const maxLat = Math.max(...lats).toFixed(4);
+      const bbox = `bbox=${minLon},${minLat}~${maxLon},${maxLat}`;
 
-      return `https://tc.mobile.yandex.net/get-map/1.x/?l=map&cr=0&lg=0&scale=1&lang=es&${pt}&${pl}&${bbox}&${ll}&size=500,256`;
+      return `https://tc.mobile.yandex.net/get-map/1.x/?l=map&scale=1&lang=es&${pt}&${pl}&${bbox}&size=500,256`;
     }
 
     function updateRoute() {
@@ -87,6 +83,7 @@
             serviceUrl: "https://router.project-osrm.org/route/v1"
           }),
           show: false,
+          addWaypoints: false
         })
         .on('routesfound', function(e) {
           const latlngs = e.routes[0].coordinates;
@@ -95,7 +92,7 @@
           const ptEnd = coords[coords.length - 1];
           const yandexURL = buildYandexURL(coords, ptStart, ptEnd);
 
-          console.log("🔗 Yandex URL:", yandexURL);
+          map.fitBounds(L.latLngBounds(latlngs));
           document.getElementById("url").innerHTML = `<a href="${yandexURL}" target="_blank">${yandexURL}</a>`;
         })
         .addTo(map);
@@ -112,33 +109,39 @@
           map.removeControl(control);
           control = null;
         }
-        document.getElementById("url").textContent = "Haz clic en dos puntos o busca una dirección para generar la ruta...";
+        document.getElementById("url").textContent = "Haz clic en dos puntos para generar la ruta...";
       }
 
-      const roundedLat = parseFloat(e.latlng.lat.toFixed(4));
-      const roundedLng = parseFloat(e.latlng.lng.toFixed(4));
-      const roundedLatLng = L.latLng(roundedLat, roundedLng);
+      const marker = L.marker(e.latlng, { draggable: true }).addTo(map).bindPopup(
+        `Lat: ${e.latlng.lat.toFixed(5)}<br>Lng: ${e.latlng.lng.toFixed(5)}`
+      ).openPopup();
 
-      const marker = L.marker(roundedLatLng, { draggable: true }).addTo(map);
-      marker.bindPopup(`Lat: ${roundedLat}, Lng: ${roundedLng}`).openPopup();
-
-      waypoints.push(roundedLatLng);
+      waypoints.push(marker.getLatLng());
       updateRoute();
 
       marker.on("dragend", function () {
-        const newPos = marker.getLatLng();
-        const updatedPos = L.latLng(
-          parseFloat(newPos.lat.toFixed(4)),
-          parseFloat(newPos.lng.toFixed(4))
-        );
-        const index = waypoints.findIndex(wp =>
-          wp.lat === marker.getLatLng().lat &&
-          wp.lng === marker.getLatLng().lng
-        );
-        waypoints[index] = updatedPos;
-        marker.setLatLng(updatedPos).bindPopup(`Lat: ${updatedPos.lat}, Lng: ${updatedPos.lng}`);
+        const index = waypoints.findIndex(w => w === marker.getLatLng());
+        waypoints[index] = marker.getLatLng();
         updateRoute();
       });
+    });
+
+    document.getElementById("search-btn").addEventListener("click", () => {
+      const address = document.getElementById("address-input").value;
+      if (!address) return;
+
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.length > 0) {
+            const { lat, lon } = data[0];
+            const coords = L.latLng(lat, lon);
+            map.setView(coords, 16);
+            const marker = L.marker(coords).addTo(map).bindPopup(`📍 ${address}`).openPopup();
+          } else {
+            alert("Dirección no encontrada");
+          }
+        });
     });
   </script>
 </body>
